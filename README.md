@@ -19,6 +19,8 @@ Describe the data source used for the project
 
 ### Tech Dive
 
-Briefly describe the 
+Briefly describe the technical approach to solving the problem, touching on the actual modules and functions deployed in the codebase.
 
 ### Future Steps
+
+Marty McFly does his stuff
