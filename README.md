@@ -17,10 +17,16 @@ Insert a graphic of the tech stack flowchart
 
 Describe the data source used for the project
 
-### Tech Dive
+### Engineering Challenge
 
 Briefly describe the technical approach to solving the problem, touching on the actual modules and functions deployed in the codebase.
 
-### Future Steps
+### Business Value
+
+What does this solve for the 
+
+### MVP
+
+### Stretch Goals
 
 Marty McFly does his stuff
