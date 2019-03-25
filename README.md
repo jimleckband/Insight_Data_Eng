@@ -15,7 +15,7 @@ To facilitate a success migration, the analytic end-users must have confidence t
 
 ### Tech Stack
 
-The legacy database will be an Amazon Redshift RDBMS in the cloud to represent a typical server-based database. The new data store will be a data lake in Cassandra or Hive. New data will be managed to both databases by Kafka or Airflow. Presto will be used as the backend for the consistency checker. Inconsistent data at the source will be handled by turning off streaming to either data store.
+The legacy database will be an MySQL RDBMS in the cloud to represent a typical server-based database. The new data store will be a data lake in Cassandra or Hive. New data will be managed to both databases by Kafka or Airflow. Presto will be used as the backend for the consistency checker. Inconsistent data at the source will be handled by turning off streaming to either data store.
 
 ![Data Flow](../master/images/Insight_Project.svg)
 
