@@ -8,7 +8,7 @@ from (
     coalesce(md5("league_id"::text), ' ') ||
     coalesce(md5("abbr"::text), ' ')
   ) as "hash"
-  from "baseball"."leagues" order by league_id
+  from "baseball"."leagues_dim" order by league_id
 ) as t
 
 
@@ -92,4 +92,11 @@ from (
 select sum(cast(conv(substring(hash, 1, 8), 16,10) as unsigned)) from
 (
 select md5(concat(md5(abbr),md5(league_id),md5(name))) hash from leagues order by league_id
+) as t;
+
+# redshift external
+
+select sum(cast(conv(substring(hash, 1, 8), 16,10) as unsigned)) from
+(
+select md5(concat(md5(abbr),md5(league_id),md5(name))) hash from baseball.ext_leagues order by league_id
 ) as t;

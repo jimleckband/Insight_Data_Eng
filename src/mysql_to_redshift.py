@@ -55,14 +55,14 @@ def load_facts(tablename):
 
     cur_string = csv2string(cur)
 
-    print cur_string
+#    print cur_string
 
     date_string = '2019-02-12'
     key = date_string + "/" + "dw_players_career_batting_stats" + ".csv"
 
     if S3_hook.check_for_key(key,S3_bucket_name):
         key_obj = Key(bucket)
-        print key_obj.key
+#        print key_obj.key
         key_obj.key = key
         bucket.delete_key(key_obj)
 #        S3_hook.delete_objects(S3_bucket_name, key)
@@ -81,11 +81,29 @@ dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to
 
 dummy_operator = DummyOperator(task_id='dummy_task', retries=3, dag=dag)
 
-load_dimension_operator = PythonOperator(
-    task_id='load_dimension',
+load_leagues_operator = PythonOperator(
+    task_id='load_leagues',
     python_callable=load_dimensions,
         op_kwargs={
             'tablename': 'leagues_dim'
+        },
+    dag=dag
+)
+
+load_teams_operator = PythonOperator(
+    task_id='load_teams',
+    python_callable=load_dimensions,
+        op_kwargs={
+            'tablename': 'teams_dim'
+        },
+    dag=dag
+)
+
+load_players_operator = PythonOperator(
+    task_id='load_players',
+    python_callable=load_dimensions,
+        op_kwargs={
+            'tablename': 'players_dim'
         },
     dag=dag
 )
@@ -101,4 +119,6 @@ load_fact_operator = PythonOperator(
 
 #################### Flow ###############
 
-dummy_operator >> load_dimension_operator >> load_fact_operator
+dummy_operator >> load_leagues_operator >> load_fact_operator
+dummy_operator >> load_teams_operator >> load_fact_operator
+dummy_operator >> load_players_operator >> load_fact_operator
