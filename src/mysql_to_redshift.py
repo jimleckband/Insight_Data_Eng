@@ -9,6 +9,7 @@ from boto.s3.connection import S3Connection, Bucket, Key
 from boto.s3.key import Key
 
 import csv
+import logging
 from cStringIO import StringIO
 
 #################### Initializations ###############
@@ -30,6 +31,21 @@ def csv2string(data):
         csv_file.writerow(row)
     return ram_string.getvalue().strip('\r\n')
 #    return ram_string
+
+def compare_dimensions(tablename):
+
+    redshift_sql = "select count(*) from " + tablename
+    red_cur = redshift_hook.get_records(redshift_sql)
+    redshift_rows = red_cur[0]
+
+    mysql_sql = "select count(*) from " + tablename
+    mysql_cur = mysql_hook.get_records(mysql_sql)
+    mysql_rows = mysql_cur[0]
+
+    print mysql_rows
+#    log.info("MySql %d", mysql_rows)
+
+    return
 
 def load_dimensions(tablename):
 
@@ -81,6 +97,15 @@ dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to
 
 dummy_operator = DummyOperator(task_id='dummy_task', retries=3, dag=dag)
 
+compare_leagues_operator = PythonOperator(
+    task_id='compare_leagues',
+    python_callable=compare_dimensions,
+        op_kwargs={
+            'tablename': 'leagues_dim'
+        },
+    dag=dag
+)
+
 load_leagues_operator = PythonOperator(
     task_id='load_leagues',
     python_callable=load_dimensions,
@@ -99,14 +124,14 @@ load_teams_operator = PythonOperator(
     dag=dag
 )
 
-load_players_operator = PythonOperator(
-    task_id='load_players',
-    python_callable=load_dimensions,
-        op_kwargs={
-            'tablename': 'players_dim'
-        },
-    dag=dag
-)
+#load_players_operator = PythonOperator(
+#    task_id='load_players',
+#    python_callable=load_dimensions,
+#        op_kwargs={
+#            'tablename': 'players_dim'
+#        },
+#    dag=dag
+#)
 
 load_fact_operator = PythonOperator(
     task_id='load_facts',
@@ -119,6 +144,6 @@ load_fact_operator = PythonOperator(
 
 #################### Flow ###############
 
-dummy_operator >> load_leagues_operator >> load_fact_operator
+dummy_operator >> compare_leagues_operator >> load_leagues_operator >> load_fact_operator
 dummy_operator >> load_teams_operator >> load_fact_operator
-dummy_operator >> load_players_operator >> load_fact_operator
+#dummy_operator >> load_players_operator >> load_fact_operator
