@@ -1,7 +1,7 @@
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
 from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.mysql_hook import MySqlHook
 from airflow.hooks.postgres_hook import PostgresHook
@@ -44,8 +44,10 @@ def compare_dimensions(tablename):
 
     print mysql_rows
 #    log.info("MySql %d", mysql_rows)
-
-    return
+    if mysql_rows == redshift_rows:
+        return 'load_facts_operator'
+    else:
+        return 'load_' + tablename + '_operator'
 
 def load_dimensions(tablename):
 
@@ -97,8 +99,8 @@ dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to
 
 dummy_operator = DummyOperator(task_id='dummy_task', retries=3, dag=dag)
 
-compare_leagues_operator = PythonOperator(
-    task_id='compare_leagues',
+compare_leagues_dim_operator = BranchPythonOperator(
+    task_id='compare_leagues_dim',
     python_callable=compare_dimensions,
         op_kwargs={
             'tablename': 'leagues_dim'
@@ -106,8 +108,10 @@ compare_leagues_operator = PythonOperator(
     dag=dag
 )
 
-load_leagues_operator = PythonOperator(
-    task_id='load_leagues',
+skip_leagues_dim_operator = DummyOperator(task_id='skip_leagues_dim', dag=dag)
+
+load_leagues_dim_operator = PythonOperator(
+    task_id='load_leagues_dim',
     python_callable=load_dimensions,
         op_kwargs={
             'tablename': 'leagues_dim'
@@ -115,8 +119,8 @@ load_leagues_operator = PythonOperator(
     dag=dag
 )
 
-load_teams_operator = PythonOperator(
-    task_id='load_teams',
+load_teams_dim_operator = PythonOperator(
+    task_id='load_teams_dim',
     python_callable=load_dimensions,
         op_kwargs={
             'tablename': 'teams_dim'
@@ -124,8 +128,8 @@ load_teams_operator = PythonOperator(
     dag=dag
 )
 
-#load_players_operator = PythonOperator(
-#    task_id='load_players',
+#load_players_dim_operator = PythonOperator(
+#    task_id='load_players_dim',
 #    python_callable=load_dimensions,
 #        op_kwargs={
 #            'tablename': 'players_dim'
@@ -133,7 +137,7 @@ load_teams_operator = PythonOperator(
 #    dag=dag
 #)
 
-load_fact_operator = PythonOperator(
+load_facts_operator = PythonOperator(
     task_id='load_facts',
     python_callable=load_facts,
         op_kwargs={
@@ -144,6 +148,7 @@ load_fact_operator = PythonOperator(
 
 #################### Flow ###############
 
-dummy_operator >> compare_leagues_operator >> load_leagues_operator >> load_fact_operator
-dummy_operator >> load_teams_operator >> load_fact_operator
-#dummy_operator >> load_players_operator >> load_fact_operator
+dummy_operator >> compare_leagues_dim_operator >> load_leagues_dim_operator >> load_facts_operator
+compare_leagues_dim_operator >> skip_leagues_dim_operator >> load_facts_operator
+dummy_operator >> load_teams_dim_operator >> load_facts_operator
+#dummy_operator >> load_players_dim_operator >> load_facts_operator
