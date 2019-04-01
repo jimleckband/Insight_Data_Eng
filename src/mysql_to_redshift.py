@@ -22,6 +22,8 @@ S3_bucket_name = 'insight-leckband'
 bucket = Bucket('S3_conn', S3_bucket_name)
 bucket = S3_hook.get_bucket(S3_bucket_name)
 
+dims = ['leagues_dim', 'teams_dim', 'players_dim']
+
 #################### Procedures ###############
 
 def csv2string(data):
@@ -45,9 +47,9 @@ def compare_dimensions(tablename):
     print mysql_rows
 #    log.info("MySql %d", mysql_rows)
     if mysql_rows == redshift_rows:
-        return 'load_facts_operator'
+        return 'skip_' + tablename
     else:
-        return 'load_' + tablename + '_operator'
+        return 'load_' + tablename
 
 def load_dimensions(tablename):
 
@@ -59,6 +61,12 @@ def load_dimensions(tablename):
     cur = mysql_hook.get_records(mysql_sql)
 
     redshift_hook.insert_rows(tablename,cur)
+
+    return
+
+def skip_dimensions(tablename):
+
+    print "Skipping load of " + tablename
 
     return
 
@@ -99,44 +107,6 @@ dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to
 
 dummy_operator = DummyOperator(task_id='dummy_task', retries=3, dag=dag)
 
-compare_leagues_dim_operator = BranchPythonOperator(
-    task_id='compare_leagues_dim',
-    python_callable=compare_dimensions,
-        op_kwargs={
-            'tablename': 'leagues_dim'
-        },
-    dag=dag
-)
-
-skip_leagues_dim_operator = DummyOperator(task_id='skip_leagues_dim', dag=dag)
-
-load_leagues_dim_operator = PythonOperator(
-    task_id='load_leagues_dim',
-    python_callable=load_dimensions,
-        op_kwargs={
-            'tablename': 'leagues_dim'
-        },
-    dag=dag
-)
-
-load_teams_dim_operator = PythonOperator(
-    task_id='load_teams_dim',
-    python_callable=load_dimensions,
-        op_kwargs={
-            'tablename': 'teams_dim'
-        },
-    dag=dag
-)
-
-#load_players_dim_operator = PythonOperator(
-#    task_id='load_players_dim',
-#    python_callable=load_dimensions,
-#        op_kwargs={
-#            'tablename': 'players_dim'
-#        },
-#    dag=dag
-#)
-
 load_facts_operator = PythonOperator(
     task_id='load_facts',
     python_callable=load_facts,
@@ -146,9 +116,34 @@ load_facts_operator = PythonOperator(
     dag=dag
 )
 
-#################### Flow ###############
+for dim in dims:
+    branch = BranchPythonOperator(
+          task_id='compare_' + dim,
+          python_callable=compare_dimensions,
+            op_kwargs={
+              'tablename': dim
+            },
+          dag=dag
+    )
 
-dummy_operator >> compare_leagues_dim_operator >> load_leagues_dim_operator >> load_facts_operator
-compare_leagues_dim_operator >> skip_leagues_dim_operator >> load_facts_operator
-dummy_operator >> load_teams_dim_operator >> load_facts_operator
-#dummy_operator >> load_players_dim_operator >> load_facts_operator
+    load_dim = PythonOperator(
+          task_id = 'load_' + dim,
+          python_callable=load_dimensions,
+            op_kwargs={
+              'tablename': dim
+          },
+          dag=dag
+    )
+
+    skip_dim = PythonOperator(
+        task_id = 'skip_' + dim,
+        python_callable=skip_dimensions,
+            op_kwargs={
+                'tablename': dim
+            },
+            dag=dag)
+
+    dummy_operator >> branch >> load_dim >> load_facts_operator
+    branch >> skip_dim >> load_facts_operator
+
+#################### Flow ###############
