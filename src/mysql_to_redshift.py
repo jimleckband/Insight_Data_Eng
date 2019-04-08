@@ -24,7 +24,9 @@ bucket = S3_hook.get_bucket(S3_bucket_name)
 
 dims = ['leagues_dim', 'teams_dim', 'players_dim']
 
-batting_columns = "player_id,year,team_id,game_id,league_id,level_id,split_id,position,ab,h,k,pa,pitches_seen,g,gs,d,t,hr,r,rbi,sb,cs,bb,ibb,gdp,sh,sf,hp,ci,wpa,stint,war"
+batting_columns_list = ['player_id','year','team_id','game_id','league_id','level_id','split_id','position','ab','h','k','pa','pitches_seen','g','gs','d','t','hr','r','rbi','sb','cs','bb','ibb','gdp','sh','sf','hp','ci','wpa','stint','war']
+
+batting_columns_sql = ','.join(batting_columns_list)
 
 #################### Procedures ###############
 
@@ -38,16 +40,17 @@ def csv2string(data):
 
 def new_partition():
 
-    mysql_sql = "select min(load_date) from staged_partitions where staged=0"
+    mysql_sql = "select 1 from staged_partitions where staged=0"
     mysql_cur = mysql_hook.get_records(mysql_sql)
-    mysql_rows = mysql_cur[0]
+#    mysql_rows = mysql_cur[0]
 
-    print mysql_rows
+#    print mysql_rows
 
-    if mysql_rows == "9999-99-99":
-        return "partition_does_not_exist"
-    else:
+#    if mysql_rows == "9999-99-99":
+    if mysql_cur:
         return "partition_exists"
+    else:
+        return "partition_does_not_exist"
 
 def find_partition(**kwargs):
     mysql_sql = "select min(load_date) from staged_partitions where staged=0"
@@ -112,7 +115,7 @@ def load_facts(tablename, **kwargs):
 #    load_date = task_instance.xcom_pull(task_ids='find_partition',key='load_date')
     my_load_date = task_instance.xcom_pull(task_ids='partition_exists')
 
-    mysql_sql = "select " + batting_columns + " from dw_players_career_batting_stats "
+    mysql_sql = "select " + batting_columns_sql + " from dw_players_career_batting_stats "
     mysql_sql += "where load_date = '" + my_load_date + "'"
 
     print mysql_sql
@@ -144,7 +147,7 @@ def load_facts(tablename, **kwargs):
         print redshift_add_part_sql
         redshift_hook.run(redshift_add_part_sql,autocommit=True)
 
-    mysql_update_stage_sql = "update staged_partitions set staged = 1 "
+    mysql_update_stage_sql = "update staged_partitions set staged = 1, checksum_date='2005-01-01' "
     mysql_update_stage_sql += "where load_date = '" + my_load_date + "'"
 
     mysql_hook.run(mysql_update_stage_sql)
@@ -158,7 +161,7 @@ def load_facts(tablename, **kwargs):
 #################### DAG ###############
 
 dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to Redshift',
-          schedule_interval='*/5 * * * *',
+          schedule_interval='0 12 * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############

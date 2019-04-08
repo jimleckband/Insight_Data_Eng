@@ -1,0 +1,42 @@
+<style>
+table {
+    font-family: arial, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td, th {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+    background-color: #dddddd;
+}
+</style>
+
+    <meta charset="UTF-8">
+    <title>Partitions</title>
+
+    <table id="partitions" style="width:100%"><tbody><tr>
+            <th>Partition</th>
+            <th>MySQL Fingerprint</th>
+            <th>Redshift Fingerprint</th>
+        </tr>
+
+   {% if result %}
+
+   {% for row in result %}
+
+        <tr>
+            <td> {{ row.load_date }}</td>
+            <td> {{ row.mysql_fingerprint }}</td>
+            <td> {{ row.redshift_fingerprint }}</td>
+        </tr>
+
+    {% endfor %}
+
+    </tbody></table>
+
+    {% endif %}

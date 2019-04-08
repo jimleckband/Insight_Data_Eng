@@ -34,8 +34,7 @@ select  md5(
           md5(hp) ||
           md5(ci) ||
           md5(stint) ||
-          md5(load_date) ||
-          md5(customer_id)) as hash
+          md5(load_date))  as hash
 from baseball_ext.dw_players_career_batting_stats
 where load_date='2019-03-02'
 ) as t
@@ -114,8 +113,7 @@ select md5(
                   md5(hp),
                   md5(ci),
                   md5(stint),
-                  md5(load_date),
-                  md5(customer_id))) as hash
+                  md5(load_date)) as hash
 from dw_players_career_batting_stats
 where load_date='2019-03-02'
 ) as t
