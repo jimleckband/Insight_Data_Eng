@@ -5,6 +5,8 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.mysql_hook import MySqlHook
 from airflow.hooks.postgres_hook import PostgresHook
 
+import logging
+
 #################### Initializations ###############
 
 # Connections are defined in Airflow GUI
@@ -24,8 +26,6 @@ def get_stale_partition(**kwargs):
 
     stale_partition = mysql_cur[0][0]
 
-    print stale_partition
-
     batting_columns_mysql_md5  = "select md5(concat(md5(" + '),md5('.join(batting_columns_list) + "))) as hash "
     batting_columns_mysql_md5 += "from dw_players_career_batting_stats "
     batting_columns_mysql_md5 += "where load_date='" + stale_partition + "') as t"
@@ -36,18 +36,12 @@ def get_stale_partition(**kwargs):
     fingerprint_mysql_sql +=       "sum(cast(conv(substring(hash,25,8), 16, 10) as unsigned)) "
     fingerprint_mysql_sql += "from ( " + batting_columns_mysql_md5
 
-    print fingerprint_mysql_sql
-
     mysql_cur = mysql_hook.get_records(fingerprint_mysql_sql)
-
-    print mysql_cur[0]
 
     fingerprint_mysql=''
 
     for fp in mysql_cur[0]:
         fingerprint_mysql = fingerprint_mysql + str(fp)
-
-    print fingerprint_mysql
 
     batting_columns_redshift_md5  = "select md5(md5(" + ') || md5('.join(batting_columns_list) + ")) as hash "
     batting_columns_redshift_md5 += "from baseball_ext.dw_players_career_batting_stats "
@@ -59,36 +53,27 @@ def get_stale_partition(**kwargs):
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash,25,8), 16))) "
     fingerprint_redshift_sql += "from ( " + batting_columns_redshift_md5
 
-    print fingerprint_redshift_sql
-
     redshift_cur = redshift_hook.get_records(fingerprint_redshift_sql)
-
-    print redshift_cur[0]
 
     fingerprint_redshift=''
 
     for fp in redshift_cur[0]:
         fingerprint_redshift += str(int(fp))
 
-    print fingerprint_redshift
-
     insert_fingerprint_sql  = "update staged_partitions set mysql_fingerprint='" + fingerprint_mysql + "', redshift_fingerprint='" + fingerprint_redshift + "', "
     insert_fingerprint_sql += "checksum_date=NOW() "
     insert_fingerprint_sql += "where load_date = '" + stale_partition + "'"
-
-    print insert_fingerprint_sql
 
     mysql_hook.run(insert_fingerprint_sql)
 
     if fingerprint_mysql != fingerprint_redshift:
         mysql_rerun_stage_sql = "update staged_partitions set staged=0 where load_date = '" + stale_partition + "'"
-        print mysql_rerun_stage_sql
         mysql_hook.run(mysql_rerun_stage_sql)
 
 #################### DAG ###############
 
 dag = DAG('fingerprint_data', description='Maintain unique fingerprints of database data',
-          schedule_interval='0 11 * * *',
+          schedule_interval='*/5 * * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############

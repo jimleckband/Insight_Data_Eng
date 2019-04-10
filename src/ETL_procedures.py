@@ -22,8 +22,6 @@ S3_bucket_name = 'insight-leckband'
 #bucket = Bucket('S3_conn', S3_bucket_name)
 bucket = S3_hook.get_bucket(S3_bucket_name)
 
-dims = ['leagues_dim', 'teams_dim', 'players_dim']
-
 batting_columns_list = ['player_id','year','team_id','game_id','league_id','level_id','split_id','position','ab','h','k','pa','pitches_seen','g','gs','d','t','hr','r','rbi','sb','cs','bb','ibb','gdp','sh','sf','hp','ci','wpa','stint','war']
 batting_columns_sql = ','.join(batting_columns_list)
 
@@ -181,84 +179,3 @@ def load_facts(tablename, **kwargs):
     mysql_hook.run(mysql_update_stage_sql)
 
     return
-
-#################### DAG ###############
-
-dag = DAG('mysql_to_redshift', description='Migrate data warehouse from MySQL to Redshift',
-          schedule_interval='0 12 * * *',
-          start_date=datetime(2019, 3, 20), catchup=False)
-
-#################### Operators ###############
-
-dummy_operator = DummyOperator(task_id='dummy_task', retries=3, dag=dag)
-
-new_partition_operator = BranchPythonOperator(
-    task_id='new_partition',
-    python_callable=new_partition,
-    trigger_rule='one_success',
-    dag=dag
-)
-
-start_load_operator = DummyOperator(task_id='start_load', trigger_rule='one_success', retries=3, dag=dag)
-
-partition_exists_operator = PythonOperator(
-    task_id='partition_exists',
-    trigger_rule='one_success',
-    python_callable=find_partition,
-    provide_context=True,
-    dag=dag)
-
-partition_nonexists_operator = DummyOperator(task_id='partition_does_not_exist', trigger_rule='one_success', retries=3, dag=dag)
-
-
-load_facts_operator = PythonOperator(
-    task_id='load_facts',
-    python_callable=load_facts,
-        op_kwargs={
-            'tablename': 'dw_players_career_batting_stats'
-        },
-    provide_context=True,
-    dag=dag
-)
-
-for dim in dims:
-    branch = BranchPythonOperator(
-          task_id='compare_' + dim,
-          python_callable=compare_dimensions,
-            op_kwargs={
-              'tablename': dim
-            },
-          provide_context=True,
-          dag=dag
-    )
-
-    load_dim = PythonOperator(
-          task_id = 'load_' + dim,
-          python_callable=load_dimensions,
-            op_kwargs={
-              'tablename': dim
-          },
-          dag=dag
-    )
-
-    skip_dim = PythonOperator(
-        task_id = 'skip_' + dim,
-        python_callable=skip_dimensions,
-            op_kwargs={
-                'tablename': dim
-            },
-            dag=dag)
-
-    start_load_operator >> branch >> load_dim >> load_facts_operator
-    branch >> skip_dim >> load_facts_operator
-
-end_operator = DummyOperator(task_id='end_task', retries=3, dag=dag)
-
-#################### Flow ###############
-
-dummy_operator >> new_partition_operator
-partition_exists_operator >> start_load_operator
-partition_nonexists_operator >> end_operator
-new_partition_operator >> partition_exists_operator
-new_partition_operator >> partition_nonexists_operator
-load_facts_operator >> end_operator

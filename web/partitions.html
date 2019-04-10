@@ -19,13 +19,22 @@ tr:nth-child(even) {
     <meta charset="UTF-8">
     <title>Partitions</title>
 
+    {% if not result %}
+
+    <h1> Databases are in Sync</h1>
+
+    {% endif %}
+
+    {% if result %}
+
+    <h1> Databases are out of Sync</h1>
+    <h2> Fingerprints Differ on Partitions Below</h2>
+
     <table id="partitions" style="width:100%"><tbody><tr>
             <th>Partition</th>
             <th>MySQL Fingerprint</th>
             <th>Redshift Fingerprint</th>
         </tr>
-
-   {% if result %}
 
    {% for row in result %}
 
