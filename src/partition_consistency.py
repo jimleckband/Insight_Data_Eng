@@ -21,7 +21,7 @@ batting_columns_sql = ','.join(batting_columns_list)
 
 def get_stale_partition(**kwargs):
 
-    mysql_sql = "select load_date from staged_partitions order by checksum_date asc"
+    mysql_sql = "select load_date from staged_partitions where staged=1 order by checksum_date asc"
     mysql_cur = mysql_hook.get_records(mysql_sql)
 
     stale_partition = mysql_cur[0][0]
@@ -73,7 +73,7 @@ def get_stale_partition(**kwargs):
 #################### DAG ###############
 
 dag = DAG('fingerprint_data', description='Maintain unique fingerprints of database data',
-          schedule_interval='*/5 * * * *',
+          schedule_interval='*/3 * * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############
