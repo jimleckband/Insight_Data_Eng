@@ -1,3 +1,15 @@
+#################### partition_consistency.py ###############
+#
+#   Info:           Python DAG, operators, and flow for checking consistency of MySql
+#                   and S3/Amazon Redshift Spectrum partitions
+#   Algorithm:      Continuously polls the staged_partitions MySQL table
+#                   staged_partitions that handles partition info. The earliest
+#                   "checksum_date" is used to test the stalest partition that has been
+#                   loaded into S3.
+#   Install:        Install in $AIRFLOW_HOME/dags on the Airflow cluster machines
+#
+####################
+
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
@@ -21,32 +33,38 @@ batting_columns_sql = ','.join(batting_columns_list)
 
 def get_stale_partition(**kwargs):
 
-    mysql_sql = "select load_date from staged_partitions where staged=1 order by checksum_date asc"
+    mysql_sql = "select load_date from staged_partitions where staged=1 order by checksum_date asc, load_date asc"
     mysql_cur = mysql_hook.get_records(mysql_sql)
 
+# Get first partition load_date returned
     stale_partition = mysql_cur[0][0]
 
+# Build the warehouse table columns sql and construct the md5 hash for each row in the partition
     batting_columns_mysql_md5  = "select md5(concat(md5(" + '),md5('.join(batting_columns_list) + "))) as hash "
     batting_columns_mysql_md5 += "from dw_players_career_batting_stats "
     batting_columns_mysql_md5 += "where load_date='" + stale_partition + "') as t"
 
+# Now construct the sql to break each row's hash into 4 parts, convert it to a unsigned int, and sum across all rows
     fingerprint_mysql_sql  = "select sum(cast(conv(substring(hash, 1,8), 16, 10) as unsigned)), "
-    fingerprint_mysql_sql +=       "sum(cast(conv(substring(hash, 9,8), 16, 10) as unsigned)), "
-    fingerprint_mysql_sql +=       "sum(cast(conv(substring(hash,17,8), 16, 10) as unsigned)), "
-    fingerprint_mysql_sql +=       "sum(cast(conv(substring(hash,25,8), 16, 10) as unsigned)) "
+    fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash, 9,8), 16, 10) as unsigned)), "
+    fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash,17,8), 16, 10) as unsigned)), "
+    fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash,25,8), 16, 10) as unsigned)) "
     fingerprint_mysql_sql += "from ( " + batting_columns_mysql_md5
 
     mysql_cur = mysql_hook.get_records(fingerprint_mysql_sql)
 
+# Create one fingerprint value by concatenate the four parts to a string
     fingerprint_mysql=''
 
     for fp in mysql_cur[0]:
         fingerprint_mysql = fingerprint_mysql + str(fp)
 
+# Build the warehouse table columns sql and construct the md5 hash for each row in the partition
     batting_columns_redshift_md5  = "select md5(md5(" + ') || md5('.join(batting_columns_list) + ")) as hash "
     batting_columns_redshift_md5 += "from baseball_ext.dw_players_career_batting_stats "
     batting_columns_redshift_md5 += "where load_date='" + stale_partition + "') as t"
 
+# Now construct the sql to break each row's hash into 4 parts, convert it to a unsigned int, and sum across all rows
     fingerprint_redshift_sql  = "select sum(trunc(strtol(substring(hash, 1,8), 16))), "
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash, 9,8), 16))), "
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash,17,8), 16))), "
@@ -55,6 +73,7 @@ def get_stale_partition(**kwargs):
 
     redshift_cur = redshift_hook.get_records(fingerprint_redshift_sql)
 
+# Create one fingerprint value by concatenate the four parts to a string
     fingerprint_redshift=''
 
     for fp in redshift_cur[0]:

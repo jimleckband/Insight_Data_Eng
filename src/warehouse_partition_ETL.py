@@ -1,3 +1,17 @@
+#################### warehouse_partition_ETL.py ###############
+#
+#   Info:       Airflow DAG and Operators for Airflow DataFingerprint ETL flow
+#   Usage:      Controls the scheduling and flow for migrating data from MySql to S3
+#   Install:    Install in $AIRFLOW_HOME/dags on the Airflow cluster machines
+#   Algorithm:  If partitions exist to migrate to S3, then the earliest partition
+#               is selected. Otherwise the flow ends. If there is a partition
+#               is ready a check is made to see if the data warehouse dimension
+#               tables need updating, and reloads them to S3 if so. Finally the
+#               main "fact" tables are loaded into S3 and partitions are created
+#               if need be in the Redshift Spectrum table.
+#
+####################
+
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
@@ -44,7 +58,6 @@ partition_exists_operator = PythonOperator(
 
 partition_nonexists_operator = DummyOperator(task_id='partition_does_not_exist', trigger_rule='one_success', retries=3, dag=dag)
 
-
 load_facts_operator = PythonOperator(
     task_id='load_facts',
     python_callable=load_facts,
@@ -54,6 +67,9 @@ load_facts_operator = PythonOperator(
     provide_context=True,
     dag=dag
 )
+
+# Operator factory for creating the dimension load and skip operators and their
+#   associated flows. The dimension tables are a list defined in dim.
 
 for dim in dims:
     branch = BranchPythonOperator(

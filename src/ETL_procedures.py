@@ -1,3 +1,11 @@
+#################### ETL_procedures.py ###############
+#
+#   Info:       Python procedure module for handling the ETL of DataFingerprint
+#   Usage:      Called by Airflow DAG operators
+#   Install:    Install in $AIRFLOW_HOME/dags on the Airflow cluster machines
+#
+####################
+
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
@@ -14,12 +22,13 @@ from cStringIO import StringIO
 
 #################### Initializations ###############
 
+# Hook connections are defined in the Airflow GUI which handles the details
+# of the connections such as IPs, Hostnames, and credentials
 mysql_hook = MySqlHook(mysql_conn_id='mysql_baseball')
 redshift_hook = PostgresHook(postgres_conn_id='redshift_host')
 S3_hook = S3Hook('S3_conn')
 
 S3_bucket_name = 'insight-leckband'
-#bucket = Bucket('S3_conn', S3_bucket_name)
 bucket = S3_hook.get_bucket(S3_bucket_name)
 
 batting_columns_list = ['player_id','year','team_id','game_id','league_id','level_id','split_id','position','ab','h','k','pa','pitches_seen','g','gs','d','t','hr','r','rbi','sb','cs','bb','ibb','gdp','sh','sf','hp','ci','wpa','stint','war']
@@ -45,7 +54,7 @@ def csv2string(data):
 
 ########### new_partition ###########
 #
-#   new_partition:      Checks to see if a partition needs to be synced to S3
+#   new_partition:      Checks to see if any partition needs to be synced to S3
 #   returns:            The task_id of the correct branch to follow
 #
 ###########
@@ -66,15 +75,12 @@ def new_partition():
 #
 ###########
 def find_partition(**kwargs):
+
     mysql_sql = "select min(load_date) from staged_partitions where staged=0"
     mysql_cur = mysql_hook.get_records(mysql_sql)
     load_date = mysql_cur[0][0]
 
-#    task_instance = kwargs['task_instance']
-#    task_instance.xcom_push(key='load_date',value=load_date)
-
     return load_date;
-#    return {'load_date':mysql_rows}
 
 ########### compare_dimensions ###########
 #
@@ -84,10 +90,7 @@ def find_partition(**kwargs):
 ###########
 def compare_dimensions(tablename,**kwargs):
 
-#    load_date = context['task_instance'].xcom_pull(task_ids='find_partition')['load_date']
-
     task_instance = kwargs['task_instance']
-#    load_date = task_instance.xcom_pull(task_ids='find_partition',key='load_date')
     my_load_date = task_instance.xcom_pull(task_ids='partition_exists')
 
     redshift_sql = "select count(*) from " + tablename
@@ -98,7 +101,6 @@ def compare_dimensions(tablename,**kwargs):
     mysql_cur = mysql_hook.get_records(mysql_sql)
     mysql_rows = mysql_cur[0]
 
-#    log.info("MySql %d", mysql_rows)
     if mysql_rows == redshift_rows:
         return 'skip_' + tablename
     else:
@@ -129,8 +131,6 @@ def load_dimensions(tablename):
 ###########
 def skip_dimensions(tablename):
 
-# Do logging instead
-
     print "Skipping load of " + tablename
 
     return
@@ -145,24 +145,27 @@ def load_facts(tablename, **kwargs):
     task_instance = kwargs['task_instance']
     my_load_date = task_instance.xcom_pull(task_ids='partition_exists')
 
-    mysql_sql = "select " + batting_columns_sql + " from dw_players_career_batting_stats "
+# Get warehouse data from MySQL for the load_date
+    mysql_sql  = "select " + batting_columns_sql + " from dw_players_career_batting_stats "
     mysql_sql += "where load_date = '" + my_load_date + "'"
 
+# Get data cursor and convert to comma delimited string
     cur = mysql_hook.get_records(mysql_sql)
     cur_string = csv2string(cur)
 
+# Construct the S3 key and delete key and value if bucket key exists
     key = "load_date=" + my_load_date + "/" + "dw_players_career_batting_stats" + ".csv"
 
     if S3_hook.check_for_key(key,S3_bucket_name):
         key_obj = Key(bucket)
         key_obj.key = key
         bucket.delete_key(key_obj)
-# put to logging
-        print "I got to delete objects"
 
+# Load the warehouse data as the value for the S3 key
     S3_hook.load_string(cur_string,key,S3_bucket_name)
 
-    redshift_sql = "select 1 from svv_external_partitions where tablename = 'dw_players_career_batting_stats' "
+# Check to see if a partition already exists in the Redshift Spectrum external table and create if not
+    redshift_sql  = "select 1 from svv_external_partitions where tablename = 'dw_players_career_batting_stats' "
     redshift_sql += "and schemaname='baseball_ext' and substring(values,3,10)= '" + my_load_date + "'"
 
     redshift_cur = redshift_hook.get_records(redshift_sql)
@@ -172,6 +175,10 @@ def load_facts(tablename, **kwargs):
         redshift_add_part_sql += "location 's3://" + S3_bucket_name + "/load_date=" + my_load_date + "/'"
 
         redshift_hook.run(redshift_add_part_sql,autocommit=True)
+
+# Tell the data warehouse that the data has been moved to S3 (staged=1) and it needs to be queued for checksumming
+# An extremely early checksum_date than any other partition is used for fingerprinting priority pickup
+# Otherwise, background fingerprinting is done by the stalest partition checksum_date
 
     mysql_update_stage_sql = "update staged_partitions set staged = 1, checksum_date='2005-01-01' "
     mysql_update_stage_sql += "where load_date = '" + my_load_date + "'"
