@@ -33,23 +33,23 @@ batting_columns_sql = ','.join(batting_columns_list)
 
 def get_stale_partition(**kwargs):
 
-    mysql_sql = "select load_date from staged_partitions where staged=1 order by checksum_date asc, load_date asc"
+    mysql_sql = "SELECT load_date FROM staged_partitions WHERE staged=1 checksum_date ASC, load_date ASC"
     mysql_cur = mysql_hook.get_records(mysql_sql)
 
 # Get first partition load_date returned
     stale_partition = mysql_cur[0][0]
 
 # Build the warehouse table columns sql and construct the md5 hash for each row in the partition
-    batting_columns_mysql_md5  = "select md5(concat(md5(" + '),md5('.join(batting_columns_list) + "))) as hash "
-    batting_columns_mysql_md5 += "from dw_players_career_batting_stats "
-    batting_columns_mysql_md5 += "where load_date='" + stale_partition + "') as t"
+    batting_columns_mysql_md5  = "SELECT md5(concat(md5(" + '),md5('.join(batting_columns_list) + "))) as hash "
+    batting_columns_mysql_md5 += "FROM dw_players_career_batting_stats "
+    batting_columns_mysql_md5 += "WHERE load_date='" + stale_partition + "') as t"
 
 # Now construct the sql to break each row's hash into 4 parts, convert it to a unsigned int, and sum across all rows
-    fingerprint_mysql_sql  = "select sum(cast(conv(substring(hash, 1,8), 16, 10) as unsigned)), "
+    fingerprint_mysql_sql  = "SELECT sum(cast(conv(substring(hash, 1,8), 16, 10) as unsigned)), "
     fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash, 9,8), 16, 10) as unsigned)), "
     fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash,17,8), 16, 10) as unsigned)), "
     fingerprint_mysql_sql +=        "sum(cast(conv(substring(hash,25,8), 16, 10) as unsigned)) "
-    fingerprint_mysql_sql += "from ( " + batting_columns_mysql_md5
+    fingerprint_mysql_sql += "FROM ( " + batting_columns_mysql_md5
 
     mysql_cur = mysql_hook.get_records(fingerprint_mysql_sql)
 
@@ -60,16 +60,16 @@ def get_stale_partition(**kwargs):
         fingerprint_mysql = fingerprint_mysql + str(fp)
 
 # Build the warehouse table columns sql and construct the md5 hash for each row in the partition
-    batting_columns_redshift_md5  = "select md5(md5(" + ') || md5('.join(batting_columns_list) + ")) as hash "
-    batting_columns_redshift_md5 += "from baseball_ext.dw_players_career_batting_stats "
-    batting_columns_redshift_md5 += "where load_date='" + stale_partition + "') as t"
+    batting_columns_redshift_md5  = "SELECT md5(md5(" + ') || md5('.join(batting_columns_list) + ")) as hash "
+    batting_columns_redshift_md5 += "FROM baseball_ext.dw_players_career_batting_stats "
+    batting_columns_redshift_md5 += "WHERE load_date='" + stale_partition + "') as t"
 
 # Now construct the sql to break each row's hash into 4 parts, convert it to a unsigned int, and sum across all rows
-    fingerprint_redshift_sql  = "select sum(trunc(strtol(substring(hash, 1,8), 16))), "
+    fingerprint_redshift_sql  = "SELECT sum(trunc(strtol(substring(hash, 1,8), 16))), "
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash, 9,8), 16))), "
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash,17,8), 16))), "
     fingerprint_redshift_sql +=        "sum(trunc(strtol(substring(hash,25,8), 16))) "
-    fingerprint_redshift_sql += "from ( " + batting_columns_redshift_md5
+    fingerprint_redshift_sql += "FROM ( " + batting_columns_redshift_md5
 
     redshift_cur = redshift_hook.get_records(fingerprint_redshift_sql)
 
@@ -79,14 +79,14 @@ def get_stale_partition(**kwargs):
     for fp in redshift_cur[0]:
         fingerprint_redshift += str(int(fp))
 
-    insert_fingerprint_sql  = "update staged_partitions set mysql_fingerprint='" + fingerprint_mysql + "', redshift_fingerprint='" + fingerprint_redshift + "', "
+    insert_fingerprint_sql  = "UPDATE staged_partitions SET mysql_fingerprint='" + fingerprint_mysql + "', redshift_fingerprint='" + fingerprint_redshift + "', "
     insert_fingerprint_sql += "checksum_date=NOW() "
-    insert_fingerprint_sql += "where load_date = '" + stale_partition + "'"
+    insert_fingerprint_sql += "WHERE load_date = '" + stale_partition + "'"
 
     mysql_hook.run(insert_fingerprint_sql)
 
     if fingerprint_mysql != fingerprint_redshift:
-        mysql_rerun_stage_sql = "update staged_partitions set staged=0 where load_date = '" + stale_partition + "'"
+        mysql_rerun_stage_sql = "UPDATE staged_partitions SET staged=0 WHERE load_date = '" + stale_partition + "'"
         mysql_hook.run(mysql_rerun_stage_sql)
 
 #################### DAG ###############

@@ -53,7 +53,7 @@ def csv2string(data):
 ###########
 def new_partition():
 
-    mysql_sql = "select 1 from staged_partitions where staged=0"
+    mysql_sql = "SELECT 1 FROM staged_partitions WHERE staged=0"
     mysql_cur = mysql_hook.get_records(mysql_sql)
 
     if mysql_cur:
@@ -68,7 +68,7 @@ def new_partition():
 #
 ###########
 def find_partition(**kwargs):
-    mysql_sql = "select min(load_date) from staged_partitions where staged=0"
+    mysql_sql = "SELECT min(load_date) FROM staged_partitions WHERE staged=0"
     mysql_cur = mysql_hook.get_records(mysql_sql)
     load_date = mysql_cur[0][0]
 
@@ -86,17 +86,14 @@ def find_partition(**kwargs):
 ###########
 def compare_dimensions(tablename,**kwargs):
 
-#    load_date = context['task_instance'].xcom_pull(task_ids='find_partition')['load_date']
-
     task_instance = kwargs['task_instance']
-#    load_date = task_instance.xcom_pull(task_ids='find_partition',key='load_date')
     my_load_date = task_instance.xcom_pull(task_ids='partition_exists')
 
-    redshift_sql = "select count(*) from " + tablename
+    redshift_sql = "SELECT count(*) FROM " + tablename
     red_cur = redshift_hook.get_records(redshift_sql)
     redshift_rows = red_cur[0]
 
-    mysql_sql = "select count(*) from " + tablename
+    mysql_sql = "SELECT count(*) FROM " + tablename
     mysql_cur = mysql_hook.get_records(mysql_sql)
     mysql_rows = mysql_cur[0]
 
@@ -113,10 +110,10 @@ def compare_dimensions(tablename,**kwargs):
 ###########
 def load_dimensions(tablename):
 
-    truncate_dim = "truncate table " + tablename
+    truncate_dim = "TRUNCATE TABLE " + tablename
     redshift_hook.run(truncate_dim)
 
-    mysql_sql = "select * from " + tablename
+    mysql_sql = "SELECT * FROM " + tablename
 
     cur = mysql_hook.get_records(mysql_sql)
 
@@ -147,8 +144,8 @@ def load_facts(tablename, **kwargs):
     task_instance = kwargs['task_instance']
     my_load_date = task_instance.xcom_pull(task_ids='partition_exists')
 
-    mysql_sql = "select " + batting_columns_sql + " from dw_players_career_batting_stats "
-    mysql_sql += "where load_date = '" + my_load_date + "'"
+    mysql_sql = "SELECT " + batting_columns_sql + " FROM dw_players_career_batting_stats "
+    mysql_sql += "WHERE load_date = '" + my_load_date + "'"
 
     cur = mysql_hook.get_records(mysql_sql)
     cur_string = csv2string(cur)
@@ -164,19 +161,19 @@ def load_facts(tablename, **kwargs):
 
     S3_hook.load_string(cur_string,key,S3_bucket_name)
 
-    redshift_sql = "select 1 from svv_external_partitions where tablename = 'dw_players_career_batting_stats' "
-    redshift_sql += "and schemaname='baseball_ext' and substring(values,3,10)= '" + my_load_date + "'"
+    redshift_sql = "SELECT 1 FROM svv_external_partitions WHERE tablename = 'dw_players_career_batting_stats' "
+    redshift_sql += "and schemaname='baseball_ext' and SUBSTRING(values,3,10)= '" + my_load_date + "'"
 
     redshift_cur = redshift_hook.get_records(redshift_sql)
     if not redshift_cur:
-        redshift_add_part_sql  = "alter table baseball_ext.dw_players_career_batting_stats add "
-        redshift_add_part_sql += "partition(load_date='" + my_load_date + "') "
+        redshift_add_part_sql  = "ALTER TABLE baseball_ext.dw_players_career_batting_stats ADD "
+        redshift_add_part_sql += "PARTITION(load_date='" + my_load_date + "') "
         redshift_add_part_sql += "location 's3://" + S3_bucket_name + "/load_date=" + my_load_date + "/'"
 
         redshift_hook.run(redshift_add_part_sql,autocommit=True)
 
-    mysql_update_stage_sql = "update staged_partitions set staged = 1, checksum_date='2005-01-01' "
-    mysql_update_stage_sql += "where load_date = '" + my_load_date + "'"
+    mysql_update_stage_sql = "UPDATE staged_partitions SET staged = 1, checksum_date='2005-01-01' "
+    mysql_update_stage_sql += "WHERE load_date = '" + my_load_date + "'"
 
     mysql_hook.run(mysql_update_stage_sql)
 
