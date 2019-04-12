@@ -11,7 +11,9 @@ Script
 
 
 update dw_players_career_batting_stats set g = g + 1 where load_date='2018-12-14' and 
-    player_id = 17809;
+    player_id = 17808;
 
 
-update staged_partitions set checksum_date = '2010-12-15' where load_date = '2018-12-14';
+update staged_partitions set checksum_date = '2001-12-15' where load_date = '2018-12-14';
+
+update staged_partitions set staged=1 where mysql_fingerprint = 'something';

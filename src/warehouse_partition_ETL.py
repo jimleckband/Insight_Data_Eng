@@ -33,7 +33,7 @@ dims = ['leagues_dim', 'teams_dim', 'players_dim']
 #################### DAG ###############
 
 dag = DAG('migrate_data_partitions', description='Migrate data warehouse from MySQL to Redshift',
-          schedule_interval='*/2 * * * *',
+          schedule_interval='0 12 * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############

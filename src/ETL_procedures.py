@@ -20,7 +20,7 @@ import csv
 import logging
 from cStringIO import StringIO
 
-#################### Initializations ###############
+#################### Initializations and User Configurables ###############
 
 # Hook connections are defined in the Airflow GUI which handles the details
 # of the connections such as IPs, Hostnames, and credentials
@@ -50,7 +50,10 @@ def csv2string(data):
     for row in data:
         csv_file.writerow(row)
 
-    return ram_string.getvalue().strip('\r\n')
+    if ram_string:
+        return ram_string.getvalue().strip('\r\n')
+    else:
+        return ''
 
 ########### new_partition ###########
 #
@@ -71,16 +74,20 @@ def new_partition():
 ########### find_partition ###########
 #
 #   find_partition:     Finds the stalest partition to load
-#   returns:            Returns a string of the partition to load
+#   returns:            Returns a string of the partition to load.
+#                       Value is also available in the kwargs context for other procedures
 #
 ###########
 def find_partition(**kwargs):
 
     mysql_sql = "select min(load_date) from staged_partitions where staged=0"
     mysql_cur = mysql_hook.get_records(mysql_sql)
-    load_date = mysql_cur[0][0]
 
-    return load_date;
+    if mysql_cur:
+        load_date = mysql_cur[0][0]
+        return load_date;
+    else:
+        raise ValueError('No staged partitions to process')
 
 ########### compare_dimensions ###########
 #
@@ -120,8 +127,10 @@ def load_dimensions(tablename):
 
     cur = mysql_hook.get_records(mysql_sql)
 
-    redshift_hook.insert_rows(tablename,cur)
-
+    if cur:
+        redshift_hook.insert_rows(tablename,cur)
+    else:
+        raise ValueError('No dimension rows for ' + tablename)
     return
 
 ########### skip_dimensions ###########
@@ -151,7 +160,10 @@ def load_facts(tablename, **kwargs):
 
 # Get data cursor and convert to comma delimited string
     cur = mysql_hook.get_records(mysql_sql)
-    cur_string = csv2string(cur)
+    if cur:
+        cur_string = csv2string(cur)
+    else:
+        raise ValueError('No data in MySQL partition ' + my_load_date)
 
 # Construct the S3 key and delete key and value if bucket key exists
     key = "load_date=" + my_load_date + "/" + "dw_players_career_batting_stats" + ".csv"

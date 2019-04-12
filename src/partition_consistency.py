@@ -19,7 +19,7 @@ from airflow.hooks.postgres_hook import PostgresHook
 
 import logging
 
-#################### Initializations ###############
+#################### Initializations and User Configurables ###############
 
 # Connections are defined in Airflow GUI
 mysql_hook = MySqlHook(mysql_conn_id='mysql_baseball')
@@ -92,7 +92,7 @@ def get_stale_partition(**kwargs):
 #################### DAG ###############
 
 dag = DAG('fingerprint_data', description='Maintain unique fingerprints of database data',
-          schedule_interval='*/3 * * * *',
+          schedule_interval='0 11 * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############
