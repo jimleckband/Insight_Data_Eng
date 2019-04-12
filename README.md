@@ -1,6 +1,6 @@
 # DataFingerprint 
-Data Warehouse Consistency during Live Migrations
-Repository for the Project developed at Insight Data Science for the Data Engineering Fellowship Project
+## Data Warehouse Consistency during Live Migrations
+Repository for the Project developed in the Data Engineering Fellowship at Insight Data Science
 
 ## During the live and continuous migration from a server-based Data Warehouse to a server-less Data Lake the business must be confident that both repositories are consistent and accurate.
 
