@@ -34,6 +34,9 @@ bucket = S3_hook.get_bucket(S3_bucket_name)
 batting_columns_list = ['player_id','year','team_id','game_id','league_id','level_id','split_id','position','ab','h','k','pa','pitches_seen','g','gs','d','t','hr','r','rbi','sb','cs','bb','ibb','gdp','sh','sf','hp','ci','wpa','stint','war']
 batting_columns_sql = ','.join(batting_columns_list)
 
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
+
 #################### Procedures ###############
 
 ########### csv2string ###########
@@ -140,7 +143,7 @@ def load_dimensions(tablename):
 ###########
 def skip_dimensions(tablename):
 
-    print "Skipping load of " + tablename
+    logging.info('Skipping load of ' + tablename)
 
     return
 
