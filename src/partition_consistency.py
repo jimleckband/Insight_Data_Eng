@@ -13,9 +13,11 @@
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
 from airflow.hooks.mysql_hook import MySqlHook
 from airflow.hooks.postgres_hook import PostgresHook
+from airflow.contrib.operators.sns_publish_operator import SnsPublishOperator
+from airflow.models import Variable
 
 import logging
 
@@ -89,15 +91,27 @@ def get_stale_partition(**kwargs):
         mysql_rerun_stage_sql = "UPDATE staged_partitions SET staged=0 WHERE load_date = '" + stale_partition + "'"
         mysql_hook.run(mysql_rerun_stage_sql)
 
+def demo_check():
+
+    demo = Variable.get("Demo_Flag")
+
+    if demo:
+        if demo == '1':
+            return "send_sns"
+
+    return "end_task"
+
 #################### DAG ###############
 
 dag = DAG('fingerprint_data', description='Maintain unique fingerprints of database data',
-          schedule_interval='*/3 * * * *',
+          schedule_interval='0 11 * * *',
           start_date=datetime(2019, 3, 20), catchup=False)
 
 #################### Operators ###############
 
 dummy_operator = DummyOperator(task_id='start_task', retries=3, dag=dag)
+skip_operator = DummyOperator(task_id='skip_message', trigger_rule='one_success', dag=dag)
+end_operator = DummyOperator(task_id='end_task', trigger_rule='one_success', dag=dag)
 
 get_stale_partition_operator = PythonOperator(
     task_id='get_stale_partition',
@@ -106,6 +120,28 @@ get_stale_partition_operator = PythonOperator(
     dag=dag
 )
 
+demo_check_operator = BranchPythonOperator(
+    task_id='demo_check',
+    python_callable=demo_check,
+    trigger_rule='one_success',
+    dag=dag
+)
+
+sns_operator = SnsPublishOperator(
+    task_id='send_sns',
+    target_arn='arn:aws:sns:us-west-2:356032320829:airflow',
+    message='Airflow fingerprinting done',
+    aws_conn_id='S3_conn',
+    trigger_rule='one_success',
+    dag=dag
+)
+
 #################### Flow ###############
 
-dummy_operator >> get_stale_partition_operator
+dummy_operator >> get_stale_partition_operator >> demo_check_operator
+
+demo_check_operator >> sns_operator
+demo_check_operator >> skip_operator
+
+sns_operator >> end_operator
+skip_operator >> end_operator
